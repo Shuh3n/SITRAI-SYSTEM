@@ -51,7 +51,7 @@ const Index = () => {
   // Manejador de Audio Dinámico (Patrones de Alarma y Voz)
   useEffect(() => {
     const isHardwareFailure = !S;
-    const isEmergencyRisk = E && (PC || PA);
+    const isEmergencyRisk = E && (PC || PA); // Ambulancia + cualquier peatón activa sirena/voz
     const isHighRisk = H && (PC || PA);
     const isCritical = isHardwareFailure || isEmergencyRisk;
 
@@ -71,20 +71,20 @@ const Index = () => {
         speak("¡Peligro! Vehículo acercándose. ¡Deténgase!");
         lastSpokenType.current = 'high-risk';
       } else if (isCritical && lastSpokenType.current !== 'critical') {
-        speak(isHardwareFailure ? "Falla de sistema detectada." : "Prioridad de emergencia. Despeje la vía.");
+        speak(isHardwareFailure ? "¡ALERTA DE SEGURIDAD! Falla crítica en la integridad del sistema detectada." : "Prioridad de emergencia. Despeje la vía.");
         lastSpokenType.current = 'critical';
       }
 
       const oscillator = ctx.createOscillator();
       const gainNode = ctx.createGain();
 
-      // Tipo de onda según gravedad: sawtooth es la más "agresiva"
-      oscillator.type = isHighRisk ? 'sawtooth' : (isCritical ? 'triangle' : 'sine');
+      // Tipo de onda: sawtooth para mayor agresividad en alertas de seguridad y riesgo
+      oscillator.type = (isHighRisk || isHardwareFailure) ? 'sawtooth' : (isEmergencyRisk ? 'triangle' : 'sine');
       oscillator.connect(gainNode);
       gainNode.connect(ctx.destination);
 
-      // Frecuencia según gravedad: HighRisk es el más agudo (880Hz)
-      const baseFreq = isHighRisk ? 880 : (isCritical ? 660 : 440);
+      // Frecuencia: Alertas de seguridad a 1200Hz (muy agudo)
+      const baseFreq = (isHighRisk || isHardwareFailure) ? 1200 : (isEmergencyRisk ? 660 : 440);
       oscillator.frequency.setValueAtTime(baseFreq, ctx.currentTime);
       gainNode.gain.setValueAtTime(0, ctx.currentTime);
 
@@ -93,26 +93,39 @@ const Index = () => {
       gainRef.current = gainNode;
 
       if (isHighRisk) {
-        // ALARMA DE PARADA (Ultra rápida: 200ms)
+        // ALARMA DE PARADA (Pausada: 500ms)
         pulseInterval = setInterval(() => {
           if (oscillatorRef.current && ctx) {
             const now = ctx.currentTime;
-            gainNode.gain.exponentialRampToValueAtTime(0.06, now + 0.05); // Más fuerte
-            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            gainNode.gain.exponentialRampToValueAtTime(0.06, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
           }
-        }, 200);
-      } else if (isCritical) {
-        // Sirena de dos tonos
+        }, 500);
+      } else if (isHardwareFailure) {
+        // SONIDO DE ALERTA DE SEGURIDAD (Pausado: 800ms)
+        let toggle = false;
+        pulseInterval = setInterval(() => {
+          if (oscillatorRef.current && ctx) {
+            const now = ctx.currentTime;
+            const nextFreq = toggle ? 1200 : 800;
+            oscillator.frequency.exponentialRampToValueAtTime(nextFreq, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.05, now + 0.1); 
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+            toggle = !toggle;
+          }
+        }, 800); 
+      } else if (isEmergencyRisk) {
+        // Sirena de dos tonos (Ajustada: 800ms)
         let toggle = false;
         pulseInterval = setInterval(() => {
           if (oscillatorRef.current && ctx) {
             const now = ctx.currentTime;
             const nextFreq = toggle ? 660 : 440;
-            oscillator.frequency.exponentialRampToValueAtTime(nextFreq, now + 0.1);
-            gainNode.gain.exponentialRampToValueAtTime(0.04, now + 0.05);
+            oscillator.frequency.exponentialRampToValueAtTime(nextFreq, now + 0.2);
+            gainNode.gain.exponentialRampToValueAtTime(0.04, now + 0.1);
             toggle = !toggle;
           }
-        }, 500);
+        }, 800);
       } else {
         // Pulso suave
         pulseInterval = setInterval(() => {
@@ -170,10 +183,14 @@ const Index = () => {
 
       if (E) {
         // Rama Emergencia del diagrama
-        if (PC || PA) {
+        if (PC) {
           newV = 0;
           newA = 1;
-          statusLabel = 'S1-W (¡PELIGRO! Emergencia + Peatón)';
+          statusLabel = 'S1-W (¡PELIGRO! Emergencia + Peatón en Calzada)';
+        } else if (PA) {
+          newV = 1; // Prioridad ambulancia sobre peatón en acera
+          newA = 1; // ALERTA: Avisar al peatón de la ambulancia
+          statusLabel = 'S1-A (ADVERTENCIA: Ambulancia + Peatón en Acera)';
         } else {
           newV = 1;
           newA = 0;
@@ -190,9 +207,15 @@ const Index = () => {
         } 
         else if (PA) {
           // Peatón en acera
-          newV = 0;
-          newA = H ? 1 : 0; 
-          statusLabel = 'S2-A (Cruce: Peatón en Acera)';
+          if (H) {
+            newV = 1; // Prioridad vehículo rápido para evitar frenadas bruscas
+            newA = 1; // Alarma para alertar al peatón
+            statusLabel = 'S2-H (ADVERTENCIA: Vehículo Rápido - Peatón en Acera)';
+          } else {
+            newV = 0; // Peatón puede cruzar si no hay riesgo inminente
+            newA = 0;
+            statusLabel = 'S2-A (Cruce: Peatón en Acera)';
+          }
         }
         else if (C) {
           // Congestión
@@ -370,9 +393,9 @@ const Index = () => {
               <p key={`${S}-${PA}-${PC}-${E}-${C}-${H}`} className="anim-fade text-slate-900 text-sm sm:text-base leading-[1.6] font-bold italic">
                 {outputs.M === 1
                   ? '⚠️ BLOQUEO DE SEGURIDAD: Falla técnica crítica. Protocolo de detención activa.'
-                  : E ? (PC || PA ? '🚨 EMERGENCIA CRÍTICA: Prioridad vital al peatón detectado durante emergencia. Semáforo a ROJO.' : '🚑 VIA LIBRE: Prioridad a vehículo de emergencia concedida.')
+                  : E ? (PC ? '🚨 EMERGENCIA CRÍTICA: Peatón en calzada durante paso de ambulancia. ¡DETENCIÓN TOTAL!' : (PA ? '🚑 PRIORIDAD AMBULANCIA: Peatón en acera. Semáforo en VERDE con ALARMA activa para advertencia.' : '🚑 VIA LIBRE: Prioridad a vehículo de emergencia concedida.'))
                   : PC ? (H ? '🛑 RIESGO VITAL: Carro y Peatón en calzada. ¡ALARMA ACTIVA!' : '🚶 PEATÓN EN CALZADA: Semáforo a ROJO. Alarma desactivada por ausencia de riesgo vehicular.')
-                  : PA ? (H ? '⚠️ AVISO PREVENTIVO: Carro veloz detectado. Alarma activa para alertar al peatón en la acera.' : '⏳ CRUCE SEGURO: Peatón esperando. Semáforo a ROJO.')
+                  : PA ? (H ? '⚠️ PRIORIDAD VEHICULAR: Carro veloz detectado. Semáforo en VERDE. Alarma activa para advertir al peatón.' : '⏳ CRUCE SEGURO: Peatón esperando. Semáforo a ROJO.')
                   : C ? '🏎️ OPTIMIZACIÓN: Congestión detectada. Flujo constante habilitado.'
                   : '✅ CICLO NOMINAL: Vía principal activa en Verde.'}
               </p>
@@ -453,10 +476,11 @@ const Index = () => {
                     <div className="space-y-2">
                       {[
                         { priority: 'P0', rule: 'PC → RED + ALARM', active: PC },
-                        { priority: 'P1', rule: 'H + PA → ALARM', active: H && PA && !PC },
-                        { priority: 'P2', rule: 'H → GREEN', active: H && !PC },
-                        { priority: 'P3', rule: 'E → GREEN', active: E && !PC && !H },
-                        { priority: 'P4', rule: 'PA → RED', active: PA && !E && !PC && !H },
+                        { priority: 'P1', rule: 'H + PA → GREEN + ALARM', active: H && PA && !PC },
+                        { priority: 'P2', rule: 'H → GREEN', active: H && !PC && !PA },
+                        { priority: 'P3', rule: 'E + PA → GREEN + ALARM', active: E && PA && !PC && !H },
+                        { priority: 'P4', rule: 'E → GREEN', active: E && !PA && !PC && !H },
+                        { priority: 'P5', rule: 'PA → RED', active: PA && !E && !PC && !H },
                       ].map(r => (
                         <div key={r.priority} className={`flex items-center gap-2 p-2 rounded-lg border text-[9px] font-black transition-all ${r.active ? 'bg-violet-800 border-violet-900 text-white shadow-md' : 'bg-white border-slate-100 text-slate-500 opacity-60'}`}>
                           <span className="w-5 h-5 flex items-center justify-center bg-black/20 rounded">{r.priority}</span>
