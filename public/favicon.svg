@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Cuerpo del semáforo -->
+  <rect x="18" y="4" width="28" height="52" rx="10" fill="#0f172a"/>
+  <!-- Luz roja -->
+  <circle cx="32" cy="17" r="8" fill="#ef4444" filter="url(#glow-red)"/>
+  <!-- Luz amarilla -->
+  <circle cx="32" cy="32" r="8" fill="#1e293b"/>
+  <!-- Luz verde -->
+  <circle cx="32" cy="47" r="8" fill="#22c55e" filter="url(#glow-green)"/>
+  <!-- Post -->
+  <rect x="30" y="56" width="4" height="6" rx="2" fill="#0f172a"/>
+  <!-- Brillo luz roja -->
+  <circle cx="32" cy="17" r="4" fill="#fca5a5" opacity="0.4"/>
+  <!-- Brillo luz verde -->
+  <circle cx="32" cy="47" r="4" fill="#86efac" opacity="0.4"/>
+  <!-- Filtros de glow -->
+  <defs>
+    <filter id="glow-red" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
