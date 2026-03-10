@@ -1,16 +1,29 @@
-# React + Vite
+# SITRAI - Sistema Inteligente de Tráfico
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**SITRAI** (Sistema Inteligente de Tráfico • Reglas de Integridad Automatizadas) es una solución avanzada de gestión vial diseñada para priorizar la seguridad del peatón y la fluidez de vehículos de emergencia mediante un motor de inferencia proactivo.
 
-Currently, two official plugins are available:
+## 🚀 Características Principales
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Detección Dual de Peatones**: Sensores diferenciados para peatones en acera (PA) y calzada (PC), permitiendo respuestas preventivas o críticas según el riesgo.
+- **Prioridad de Emergencia**: Detección de ambulancias (E) que garantiza vía libre inmediata sin comprometer la seguridad peatonal.
+- **Análisis de Velocidad**: Sensor de alta velocidad (H) para evitar frenados bruscos y alertar a los peatones sobre vehículos en aproximación rápida.
+- **Gestión de Congestión**: Optimización del flujo vehicular (C) cuando se detecta alta densidad de tráfico.
+- **Protocolo de Integridad (S)**: Monitoreo constante del hardware que activa un modo de control manual en caso de fallo técnico.
 
-## React Compiler
+## 🧠 Motor de Inferencia
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+El sistema utiliza un grafo de decisión priorizado:
+1.  **P0 (Crítico)**: Peatón en calzada -> Semáforo en rojo y alarma activa.
+2.  **P1 (Alerta)**: Vehículo rápido + Peatón esperando -> Alarma preventiva.
+3.  **P2 (Fluidez)**: Vehículo rápido -> Mantiene verde para seguridad cinética.
+4.  **P3 (Emergencia)**: Ambulancia -> Prioridad de paso.
+5.  **P4 (Peatonal)**: Peatón en acera -> Ciclo de cruce seguro.
 
-## Expanding the ESLint configuration
+## 🛠️ Tecnologías
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- **Fronend**: React + Vite
+- **Estilos**: Tailwind CSS (Lucide Icons)
+- **Lógica de Audio**: Web Audio API para señales sonoras dinámicas.
+
+---
+Desarrollado con un enfoque en la ética de la automatización y la protección de la vida.

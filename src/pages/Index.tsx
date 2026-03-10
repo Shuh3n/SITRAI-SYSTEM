@@ -34,43 +34,100 @@ const Index = () => {
   const audioCtx = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  const lastSpokenType = useRef<string | null>(null);
 
-  // Manejador de Audio Continuo (Loop suave)
+  // Función de voz sintetizada
+  const speak = (text: string) => {
+    if (!soundEnabled) return;
+    // Cancelar cualquier mensaje anterior para que el nuevo sea inmediato
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES';
+    utterance.rate = 1.1; // Un poco más rápido para urgencia
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Manejador de Audio Dinámico (Patrones de Alarma y Voz)
   useEffect(() => {
-    const isCritical = !S || PC; // Falla o Peatón en Calzada es crítico
+    const isHardwareFailure = !S;
+    const isEmergencyRisk = E && (PC || PA);
+    const isHighRisk = H && (PC || PA);
+    const isCritical = isHardwareFailure || isEmergencyRisk;
+
+    let pulseInterval: any;
 
     if (outputs.A === 1 && soundEnabled) {
-      if (!oscillatorRef.current) {
-        if (!audioCtx.current) {
-          // @ts-ignore
-          audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
+      if (!audioCtx.current) {
+        // @ts-ignore
+        audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
 
-        const ctx = audioCtx.current!;
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
+      const ctx = audioCtx.current!;
+      if (ctx.state === 'suspended') ctx.resume();
 
-        // Configuración de sonido suave (Leve)
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(isCritical ? 523.25 : 440, ctx.currentTime); // Do o La
+      // LÓGICA DE VOZ (Se dispara una vez al detectar el estado)
+      if (isHighRisk && lastSpokenType.current !== 'high-risk') {
+        speak("¡Peligro! Vehículo acercándose. ¡Deténgase!");
+        lastSpokenType.current = 'high-risk';
+      } else if (isCritical && lastSpokenType.current !== 'critical') {
+        speak(isHardwareFailure ? "Falla de sistema detectada." : "Prioridad de emergencia. Despeje la vía.");
+        lastSpokenType.current = 'critical';
+      }
 
-        // Volumen muy leve (0.03)
-        gainNode.gain.setValueAtTime(0.03, ctx.currentTime);
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
 
-        // Efecto de ondulación suave para que no sea molesto
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1);
-        gainNode.gain.exponentialRampToValueAtTime(0.03, ctx.currentTime + 2);
+      // Tipo de onda según gravedad: sawtooth es la más "agresiva"
+      oscillator.type = isHighRisk ? 'sawtooth' : (isCritical ? 'triangle' : 'sine');
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
 
-        oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
+      // Frecuencia según gravedad: HighRisk es el más agudo (880Hz)
+      const baseFreq = isHighRisk ? 880 : (isCritical ? 660 : 440);
+      oscillator.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+      gainNode.gain.setValueAtTime(0, ctx.currentTime);
 
-        oscillator.start();
-        oscillatorRef.current = oscillator;
-        gainRef.current = gainNode;
+      oscillator.start();
+      oscillatorRef.current = oscillator;
+      gainRef.current = gainNode;
+
+      if (isHighRisk) {
+        // ALARMA DE PARADA (Ultra rápida: 200ms)
+        pulseInterval = setInterval(() => {
+          if (oscillatorRef.current && ctx) {
+            const now = ctx.currentTime;
+            gainNode.gain.exponentialRampToValueAtTime(0.06, now + 0.05); // Más fuerte
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          }
+        }, 200);
+      } else if (isCritical) {
+        // Sirena de dos tonos
+        let toggle = false;
+        pulseInterval = setInterval(() => {
+          if (oscillatorRef.current && ctx) {
+            const now = ctx.currentTime;
+            const nextFreq = toggle ? 660 : 440;
+            oscillator.frequency.exponentialRampToValueAtTime(nextFreq, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.04, now + 0.05);
+            toggle = !toggle;
+          }
+        }, 500);
+      } else {
+        // Pulso suave
+        pulseInterval = setInterval(() => {
+          if (oscillatorRef.current && ctx) {
+            const now = ctx.currentTime;
+            gainNode.gain.linearRampToValueAtTime(0.03, now + 0.1);
+            gainNode.gain.linearRampToValueAtTime(0.001, now + 0.4);
+          }
+        }, 800);
       }
     } else {
-      // Detener sonido cuando se desactiva la alarma o el sonido
+      lastSpokenType.current = null;
+      // Detener sonido
       if (oscillatorRef.current) {
+// ...
         try {
           oscillatorRef.current.stop();
           oscillatorRef.current.disconnect();
@@ -84,9 +141,13 @@ const Index = () => {
     }
 
     return () => {
+      if (pulseInterval) clearInterval(pulseInterval);
       if (oscillatorRef.current) {
-        oscillatorRef.current.stop();
-        oscillatorRef.current.disconnect();
+        try {
+          oscillatorRef.current.stop();
+          oscillatorRef.current.disconnect();
+        } catch (e) { }
+        oscillatorRef.current = null;
       }
     };
   }, [outputs.A, S, PC, soundEnabled]);
@@ -107,44 +168,43 @@ const Index = () => {
     } else {
       newM = 0;
 
-      // PRIORIDADES ACTUALIZADAS
-      if (PC) {
-        // SEGURIDAD CRÍTICA: Peatón en Calzada -> SIEMPRE ROJO + ALARMA
-        newV = 0;
-        newA = 1;
-        statusLabel = 'S2-C (PELIGRO: Peatón en Calzada)';
-      }
-      else if (H) {
-        // RIESGO CINÉTICO: Vehículo a alta velocidad o muy cerca
-        newV = 1; // Mantenemos verde para evitar frenazo brusco
-        statusLabel = 'S4 (Alerta: Vehículo a Alta Velocidad)';
-
-        if (PA) {
-          // Si hay peatón en acera y viene carro rápido -> ALARMA (Aviso previo)
+      if (E) {
+        // Rama Emergencia del diagrama
+        if (PC || PA) {
+          newV = 0;
           newA = 1;
-          statusLabel = 'S4 (Aviso: Vehículo Rápido + Peatón esperando)';
+          statusLabel = 'S1-W (¡PELIGRO! Emergencia + Peatón)';
+        } else {
+          newV = 1;
+          newA = 0;
+          statusLabel = 'S1 (Emergencia en curso)';
         }
-      }
-      else if (E) {
-        // EMERGENCIA: Prioridad sobre Acera y Congestión
-        newV = 1;
-        newA = 0;
-        statusLabel = 'S1 (Emergencia en curso)';
-        if (PA) {
-          statusLabel = 'S1 (Prioridad: Ambulancia sobre Acera)';
-        }
-      }
-      else if (PA) {
-        // AVISO PEATONAL: Se prepara el cruce
-        newV = 0;
-        statusLabel = 'S2-A (Cruce: Peatón en Acera)';
-      }
-      else if (C) {
-        newV = 1;
-        statusLabel = 'S0 (Flujo: Congestión Detectada)';
       } else {
-        newV = 1;
-        statusLabel = 'S0 (Reposo / Ciclo Normal)';
+        // Rama Sin Emergencia
+        if (PC) {
+          // Peatón en calzada
+          newV = 0;
+          // ALARMA DINÁMICA: Solo si hay vehículo cerca (H)
+          newA = H ? 1 : 0;
+          statusLabel = H ? 'S2-C (RIESGO VITAL: Carro + Peatón)' : 'S2-C (Peatón en Calzada - Cruce Seguro)';
+        } 
+        else if (PA) {
+          // Peatón en acera
+          newV = 0;
+          newA = H ? 1 : 0; 
+          statusLabel = 'S2-A (Cruce: Peatón en Acera)';
+        }
+        else if (C) {
+          // Congestión
+          newV = 1;
+          newA = 0;
+          statusLabel = 'S0 (Flujo: Congestión Detectada)';
+        } else {
+          // Estado Normal
+          newV = 1;
+          newA = 0;
+          statusLabel = 'S0 (Reposo / Ciclo Normal)';
+        }
       }
     }
 
@@ -310,16 +370,11 @@ const Index = () => {
               <p key={`${S}-${PA}-${PC}-${E}-${C}-${H}`} className="anim-fade text-slate-900 text-sm sm:text-base leading-[1.6] font-bold italic">
                 {outputs.M === 1
                   ? '⚠️ BLOQUEO DE SEGURIDAD: Falla técnica crítica. Protocolo de detención activa.'
-                  : PC ? '🛑 RIESGO VITAL: Peatón detectado en calzada. Semáforo a ROJO y Alarma activa para protección de vida.'
-                    : H ? (PA
-                      ? '⚠️ CARRO VELOZ + PEATÓN EN ACERA: Se mantiene el VERDE para evitar colisiones traseras del vehículo, pero se activa la ALARMA para alertar al peatón esperando.'
-                      : '⚡ PREVENCIÓN DE IMPACTO: Vehículo detectado a alta velocidad. El sistema mantiene el VERDE para evitar accidentes por frenado brusco.')
-                      : E ? (PA
-                        ? '🚑 PRIORIDAD MÉDICA: Ambulancia mantiene paso VERDE sobre el peatón en acera para responder a la emergencia.'
-                        : '🚑 VIA LIBRE: Prioridad a vehículo de emergencia concedida.')
-                        : PA ? '⏳ PEATÓN ESPERANDO: Semáforo a ROJO para habilitar el cruce seguro en la acera.'
-                          : C ? '🏎️ OPTIMIZACIÓN: Congestión detectada. Flujo constante habilitado.'
-                            : '✅ CICLO NOMINAL: Vía principal activa en Verde.'}
+                  : E ? (PC || PA ? '🚨 EMERGENCIA CRÍTICA: Prioridad vital al peatón detectado durante emergencia. Semáforo a ROJO.' : '🚑 VIA LIBRE: Prioridad a vehículo de emergencia concedida.')
+                  : PC ? (H ? '🛑 RIESGO VITAL: Carro y Peatón en calzada. ¡ALARMA ACTIVA!' : '🚶 PEATÓN EN CALZADA: Semáforo a ROJO. Alarma desactivada por ausencia de riesgo vehicular.')
+                  : PA ? (H ? '⚠️ AVISO PREVENTIVO: Carro veloz detectado. Alarma activa para alertar al peatón en la acera.' : '⏳ CRUCE SEGURO: Peatón esperando. Semáforo a ROJO.')
+                  : C ? '🏎️ OPTIMIZACIÓN: Congestión detectada. Flujo constante habilitado.'
+                  : '✅ CICLO NOMINAL: Vía principal activa en Verde.'}
               </p>
             </div>
           </div>
